@@ -162,6 +162,118 @@ class FangraphsDataTable(ABC):
                 )
             )
         )
+      
+    def fetch_split(self, start_dt : str, end_dt : str, start_season: int, end_season: Optional[int] = None, league: str = 'ALL', ind: int = 1,
+              stat_columns: Union[str, List[str]] = 'ALL', qual: Optional[int] = None, split_seasons: bool = True,
+              month: str = 'ALL', on_active_roster: bool = False, minimum_age: int = MIN_AGE,
+              maximum_age: int = MAX_AGE, team: str = '', _filter: str = '', players: str = '',
+              position: str = 'ALL', max_results: int = 1000000,) -> pd.DataFrame:
+
+        """
+        Get leaderboard data from Fangraphs.
+
+        ARGUMENTS:
+        start_season       : int              : First season to return data for
+        end_season         : int              : Last season to return data for
+                                                Default = start_season
+        league             : str              : League to return data for: ALL, AL, FL, NL
+                                                Default = ALL
+        ind                : int              : DEPRECATED. ONLY FOR BACKWARDS COMPATIBILITY. USE split_seasons INSTEAD
+                                                1 if you want individual season-level data
+                                                0 if you want a player's aggreagate data over all seasons in the query
+        stat_columns       : str or List[str] : The columns of data to return
+                                                Default = ALL
+        qual               : Optional[int]    : Minimum number of plate appearances to be included.
+                                                If None is specified, the Fangraphs default ('y') is used.
+                                                Default = None
+        split_seasons      : bool             : True if you want individual season-level data
+                                                False if you want aggregate data over all seasons.
+                                                Default = False
+        month              : str              : Month to filter data by. 'ALL' to not filter by month.
+                                                Default = 'ALL'
+        on_active_roster   : bool             : Only include active roster players.
+                                                Default = False
+        minimum_age        : int              : Minimum player age.
+                                                Default = 0
+        maximum_age        : int              : Maximum player age.
+                                                Default = 100
+        team               : str              : Team to filter data by.
+                                                Specify "0,ts" to get aggregate team data.
+        position           : str              : Position to filter data by.
+                                                Default = ALL
+        max_results        : int              : The maximum number of results to return.
+                                                Default = 1000000 (In effect, all results)
+        """
+
+        stat_columns_enums = stat_list_from_str(self.STATS_CATEGORY, stat_columns)
+
+        if start_season is None:
+            raise ValueError(
+                "You need to provide at least one season to collect data for. " +
+                "Try specifying start_season or start_season and end_season."
+            )
+
+        if end_season is None:
+            end_season = start_season
+
+        assert self.STATS_CATEGORY is not None
+
+        if league is None:
+            raise ValueError("parameter 'league' cannot be None.")
+            
+        params = {
+          'pos' :	'all', 
+          'stats' :	'bat', 
+          'lg' :	'all', 
+          'qual' :	'y', 
+          'type' :	'8', 
+          'season' :	'2023', 
+          'month' :	'1000', 
+          'season1' :	'2023', 
+          'ind' :	'0', 
+          'team' :	'0', 
+          'rost' :	'0', 
+          'age' :	'0', 
+          'filter' : '', 
+          'players' :	'0', 
+          'startdate' :	'2023-04-01', 
+          'enddate' :	'2023-04-15',
+          }
+
+        url_options = {
+            'pos': FangraphsPositions.parse(position).value,
+            'stats': self.STATS_CATEGORY.value,
+            'lg': FangraphsLeague.parse(league.upper()).value,
+            'qual': qual if qual is not None else 'y',
+            'type': stat_list_to_str(stat_columns_enums),
+            'season': end_season,
+            'month': FangraphsMonth.parse(month).value,
+            'season1': start_season,
+            'ind': ind if ind == 0 and split_seasons else int(split_seasons),
+            'team':  f'{team or 0},ts' if self.TEAM_DATA else team,
+            'rost': int(on_active_roster),
+            'age': f"{minimum_age},{maximum_age}",
+            'filter': _filter,
+            'players': players,
+            'startdate' :	'2023-04-01', 
+            'enddate' :	'2023-04-15',
+            'page': f'1_{max_results}'
+        }
+
+        return self._validate(
+            self._postprocess(
+                self.html_accessor.get_tabular_data_from_options(
+                    self.QUERY_ENDPOINT,
+                    query_params=url_options,
+                    # TODO: Remove the type: ignore after this is fixed: https://github.com/python/mypy/issues/5485
+                    column_name_mapper=self.COLUMN_NAME_MAPPER, # type: ignore
+                    known_percentages=self.KNOWN_PERCENTAGES,
+                    row_id_func=self.ROW_ID_FUNC,
+                    row_id_name=self.ROW_ID_NAME,
+                )
+            )
+        )
+      
 
 class FangraphsBattingStatsTable(FangraphsDataTable):
     STATS_CATEGORY: FangraphsStatsCategory = FangraphsStatsCategory.BATTING
